@@ -1,0 +1,45 @@
+﻿#pragma kernel UVToBarycentric
+
+struct TriangleUV
+{
+	float2 vertex1UV;
+	float2 vertex2UV;
+	float2 vertex3UV;
+};
+
+StructuredBuffer<TriangleUV> TriangleBuffer;
+int OutputBufferSize;
+StructuredBuffer<float2> WantedUVs;
+RWStructuredBuffer<float3> BarycentricsAndTriangleIndices;
+
+[numthreads(1,1,1)]
+void UVToBarycentric(uint3 id : SV_DispatchThreadID)
+{
+	TriangleUV t = TriangleBuffer[id.x];
+	// coefficients y2 - y3 , y1 - y3 , ...
+	float y2y3 = t.vertex2UV.y - t.vertex3UV.y;
+	float y1y3 = t.vertex1UV.y - t.vertex3UV.y;
+	float y3y1 = t.vertex3UV.y - t.vertex1UV.y;
+	float x3x2 = t.vertex3UV.x - t.vertex2UV.x;
+	float x1x3 = t.vertex1UV.x - t.vertex3UV.x;
+	float div = (y2y3 * x1x3) + (x3x2 * y1y3);
+	//coefficients x - x3 and y - y3
+	float xx3, yy3;
+	//barycentric coordinates 
+	float b1, b2, b3;
+	for (int i = 0; i < OutputBufferSize; i++) {
+		xx3 = WantedUVs[i].x - t.vertex3UV.x;
+		yy3 = WantedUVs[i].y - t.vertex3UV.y;
+		b1 = (y2y3 * xx3) + (x3x2 * yy3);
+		b1 = b1 / div;
+		b2 = (y3y1 * xx3) + (x1x3 * yy3);
+		b2 = b2 / div;
+		b3 = 1.0f - b1 - b2;
+		if (b1 <= 1.0f  && b1 >= 0.0f && b2 <= 1.0f && b2 >= 0.0f && b3 <= 1.0f && b3 >= 0.0f) {
+			//is in this triangle 
+			BarycentricsAndTriangleIndices[i].x = b1;
+			BarycentricsAndTriangleIndices[i].y = b2;
+			BarycentricsAndTriangleIndices[i].z = (float)id.x;//triangle index
+		}
+	}
+}
